@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Button, StatusBar, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput, StatusBar, TouchableOpacity } from 'react-native';
 import AppleLoginButton from '../components/AppleLoginButton';
+import Icon from 'react-native-vector-icons/FontAwesome';
 
 export default function Login({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setPasswordVisible] = useState(false);
+
+  const togglePasswordVisibility = () => {
+    setPasswordVisible(prevState => !prevState);
+  };
 
   const handleLogin = () => {
     if (email && password) {
@@ -18,8 +24,7 @@ export default function Login({ navigation }) {
     <View style={styles.container}>
       <View style={styles.register}> 
         <Text style={styles.text}>Don't have an account? </Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Register')}>
+        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
             <Text style={styles.registerText}>Sign Up</Text>
         </TouchableOpacity>
       </View>
@@ -31,33 +36,43 @@ export default function Login({ navigation }) {
         onChangeText={setEmail}
         keyboardType="email-address"
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      <TouchableOpacity
-          style={styles.forgetPassword}
-          onPress={() => navigation.navigate('ForgotPassword')}>
-            <Text style={styles.forgetPasswordText}>Forgot Password?</Text>
+
+      <View style={styles.passwordContainer}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!isPasswordVisible}
+        />
+        <TouchableOpacity onPress={togglePasswordVisibility} style={styles.iconContainer}>
+          <Icon
+            name={isPasswordVisible ? 'eye' : 'eye-slash'} 
+            size={20}
+            color="#6A707C"
+          />
         </TouchableOpacity>
-      
+      </View>
+
+      <TouchableOpacity
+        style={styles.forgetPassword}
+        onPress={() => navigation.navigate('ForgotPassword')}>
+        <Text style={styles.forgetPasswordText}>Forgot Password?</Text>
+      </TouchableOpacity>
+
       <View style={styles.lowerContainer}>
         <TouchableOpacity
           style={styles.button}
           onPress={handleLogin}>
-            <Text style={styles.buttonText}>Login</Text>
+          <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
-
       </View>  
 
       <View style={styles.socialLoginContainer}>
         <Text style={styles.forgetPasswordText}>Or Login with</Text>
         <AppleLoginButton onPress={() => alert('Login with Apple ID')} />
       </View>
-      
+
       <StatusBar style="auto" />
     </View>
   );
@@ -81,8 +96,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     fontFamily: 'Urbanist Medium',
     width: '85%',
-    justifyContent: 'center',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    width: '85%',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(30, 35, 44, 0.7)',
+    borderRadius: 8,
+    backgroundColor: 'white',
+  },
+  passwordInput: {
+    flex: 1,
+    height: 50,
+    paddingHorizontal: 8,
+    fontFamily: 'Urbanist Medium',
+  },
+  iconContainer: {
+    padding: 10,
   },
   button: {
     borderRadius: 8,
@@ -129,7 +161,6 @@ const styles = StyleSheet.create({
     color: '#1E232C',
     fontFamily: 'Urbanist SemiBold',
   },
-  
   socialLoginContainer: {
     marginTop: 20, 
     alignItems: 'center',
