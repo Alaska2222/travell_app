@@ -8,6 +8,7 @@ import MainScreen from './screens/Main.jsx';
 import SendCodeScreen from './screens/SendCode.jsx';
 import CreateNewPassword from './screens/CreateNewPassword.jsx';
 import HomeScreen from './screens/Home.jsx';
+import UserScreen from './screens/User.jsx';
 import { useFonts } from "expo-font";
 import { Urbanist_400Regular, Urbanist_500Medium, Urbanist_600SemiBold, Urbanist_700Bold } from "@expo-google-fonts/urbanist";
 import { Text } from 'react-native';
@@ -35,7 +36,8 @@ export default function App() {
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: ' ' }} />
         <Stack.Screen name="Main" component={MainScreen} options={{ title: ' ' }} />
          <Stack.Screen name="SendCode" component={SendCodeScreen} options={{ title: ' ' }} />
-         <Stack.Screen name="Home" component={HomeScreen} options={{ title: ' ' }} />
+         <Stack.Screen name="Home" component={HomeScreen} options={{ title: ' ' , }} />
+         <Stack.Screen name="User" component={UserScreen} options={{ title: ' ' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
