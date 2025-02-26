@@ -1,28 +1,37 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import InputField from '../components/InputField';
+import ButtonDark from '../components/ButtonDark';
+import BottomText from '../components/BottomText';
 
 const ForgotPassword = () => {
     const [email, setEmail] = useState('');
     const navigation = useNavigation();
 
-    const handlePasswordReset = () => {
-        console.log('Password reset link sent to:', email);
-    };
-
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Forgot Password</Text>
-            <TextInput
-                style={styles.input}
-                placeholder="Enter your email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-            />
-            <Button title="Reset Password" onPress={handlePasswordReset} />
-            <Button title="Back to Login" onPress={() => navigation.navigate('Login')} />
+            <Text style={styles.title}>Forgot Password?</Text>
+            <Text style={styles.bodyText}>Please enter your email address to restore your password</Text>
+            <View style={styles.lowerContainer}> 
+                <InputField 
+                    value={email} 
+                    onChangeText={setEmail} 
+                    placeholder="Enter your email" 
+                    keyboardType="email-address" 
+                />
+                <ButtonDark text="Send Code" onPress={() => navigation.navigate('SendCode')} />
+                
+            </View>
+        
+            <View style={styles.loginContainer}>
+                <BottomText 
+                    text="Remember Password? " 
+                    buttonText="Login" 
+                    navigation={navigation} 
+                    navigateTo="Login" 
+                />
+            </View>
         </View>
     );
 };
@@ -31,19 +40,33 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        padding: 16,
+        backgroundColor: '#E3E7E8',
     },
     title: {
-        fontSize: 24,
+        fontSize: 35,
         marginBottom: 16,
-        textAlign: 'center',
+        fontFamily: 'Urbanist_700Bold',
+        paddingHorizontal: 32,
     },
-    input: {
-        height: 40,
-        borderColor: 'gray',
-        borderWidth: 1,
-        marginBottom: 16,
-        paddingHorizontal: 8,
+    bodyText: {
+        fontSize: 16,
+        marginBottom: 24,
+        fontFamily: 'Urbanist_500Medium',
+        color: '#8391A1',
+        paddingHorizontal: 32,
+    },
+    lowerContainer: {
+        marginTop: 70,
+        width: '100%',
+        alignItems: 'center',
+    },
+    loginContainer: {
+        position: 'absolute',
+        bottom: 40, 
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
     },
 });
 

@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 15,
-    fontFamily: 'Urbanist SemiBold',
+    fontFamily: 'Urbanist_600SemiBold',
   },
   loginText: {
     color: 'white',

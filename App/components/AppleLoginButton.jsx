@@ -1,9 +1,12 @@
 import React from 'react';
 import { TouchableOpacity, Image, StyleSheet } from 'react-native';
 
-const AppleLoginButton = ({ onPress  }) => {
+const AppleLoginButton = ({ onPress, width = '35%', height = '25%' }) => {
     return (
-        <TouchableOpacity style={styles.button} onPress={onPress}>
+        <TouchableOpacity 
+            style={[styles.button, { width, height }]} 
+            onPress={onPress}
+        >
             <Image
                 source={require('../assets/apple-logo.png')}
                 style={styles.logo}
@@ -14,8 +17,6 @@ const AppleLoginButton = ({ onPress  }) => {
 
 const styles = StyleSheet.create({
     button: {
-        width: '35%',	
-        height: '25%',
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: 8,

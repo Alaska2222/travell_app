@@ -12,14 +12,6 @@ export default function Login({ navigation }) {
     setPasswordVisible(prevState => !prevState);
   };
 
-  const handleLogin = () => {
-    if (email && password) {
-      alert('Logged in successfully!');
-    } else {
-      alert('Please enter email and password!');
-    }
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.register}> 
@@ -63,14 +55,14 @@ export default function Login({ navigation }) {
       <View style={styles.lowerContainer}>
         <TouchableOpacity
           style={styles.button}
-          onPress={handleLogin}>
+          onPress={() => navigation.navigate('Home')}>
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
       </View>  
 
       <View style={styles.socialLoginContainer}>
         <Text style={styles.forgetPasswordText}>Or Login with</Text>
-        <AppleLoginButton onPress={() => alert('Login with Apple ID')} />
+        <AppleLoginButton width={100} height={55} onPress={() => alert('Login with Apple ID')} />
       </View>
 
       <StatusBar style="auto" />
@@ -90,20 +82,20 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(30, 35, 44, 0.7)',
+    borderColor: '#DADADA',
     backgroundColor: 'white',
     marginBottom: 12,
     paddingHorizontal: 8,
-    fontFamily: 'Urbanist Medium',
-    width: '85%',
+    fontFamily: 'Urbanist_500Medium',
+    width: '90%',
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '85%',
+    width: '90%',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(30, 35, 44, 0.7)',
+    borderColor: '#DADADA',
     borderRadius: 8,
     backgroundColor: 'white',
   },
@@ -111,7 +103,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 50,
     paddingHorizontal: 8,
-    fontFamily: 'Urbanist Medium',
+    fontFamily: 'Urbanist_500Medium',
   },
   iconContainer: {
     padding: 10,
@@ -120,7 +112,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(30, 35, 44, 0.7)',
-    width: '85%',
+    width: '90%',
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
@@ -128,7 +120,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 15,
-    fontFamily: 'Urbanist SemiBold',
+    fontFamily: 'Urbanist_600SemiBold',
     color: 'white',
   },
   lowerContainer: {
@@ -143,7 +135,7 @@ const styles = StyleSheet.create({
   },
   forgetPasswordText: {
     color: '#6A707C',
-    fontFamily: 'Urbanist SemiBold',
+    fontFamily: 'Urbanist_600SemiBold',
     fontSize: 14,
   },
   register: {
@@ -154,12 +146,12 @@ const styles = StyleSheet.create({
   registerText: {
     fontSize: 15,
     color: '#35C2C1',
-    fontFamily: 'Urbanist SemiBold',
+    fontFamily: 'Urbanist_600SemiBold',
   },
   text: {
     fontSize: 15,
     color: '#1E232C',
-    fontFamily: 'Urbanist SemiBold',
+    fontFamily: 'Urbanist_600SemiBold',
   },
   socialLoginContainer: {
     marginTop: 20, 
