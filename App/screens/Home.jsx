@@ -1,17 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  Text, 
-  Modal, 
-  Alert, 
-  TouchableWithoutFeedback, 
-  Keyboard,
-  ScrollView,
-  ActivityIndicator
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback} from 'react-native';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import ButtonDark from '../components/ButtonDark';
@@ -26,7 +14,7 @@ const Home = ({ navigation }) => {
   const [destinationSuggestions, setDestinationSuggestions] = useState([]);
   
   const [isCreatingPath, setIsCreatingPath] = useState(false);
-  const [activeField, setActiveField] = useState('start'); // 'start' or 'destination'
+  const [activeField, setActiveField] = useState('start'); 
   const [startLocation, setStartLocation] = useState(null);
   const [destinationLocation, setDestinationLocation] = useState(null);
   
@@ -38,14 +26,17 @@ const Home = ({ navigation }) => {
   
   const destinationDebounceTimeoutRef = useRef(null);
   const destinationAbortControllerRef = useRef(null);
-  
+  const [isStartSuggestionSelected, setIsStartSuggestionSelected] = useState(false);
+  const [isDestinationSuggestionSelected, setIsDestinationSuggestionSelected] = useState(false);
+  const destinationInputRef = useRef(null);
+
   useEffect(() => {
-    if (activeField !== 'start') return;
-    if (searchQuery.length <= 2) {
-      setSuggestions([]);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      return;
-    }
+    if (activeField !== 'start' || isStartSuggestionSelected) return;
+      if (searchQuery.length <= 2) {
+    setSuggestions([]);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    return;
+  }
   
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -86,16 +77,16 @@ const Home = ({ navigation }) => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-  }, [searchQuery, activeField]);
+  }, [searchQuery, activeField, isStartSuggestionSelected]);
   
 
   useEffect(() => {
-    if (activeField !== 'destination') return;
+    if (activeField !== 'destination' || isDestinationSuggestionSelected) return;
     if (destinationQuery.length <= 2) {
-      setDestinationSuggestions([]);
-      if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
-      return;
-    }
+    setDestinationSuggestions([]);
+    if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
+    return;
+  }
   
     if (destinationDebounceTimeoutRef.current) {
       clearTimeout(destinationDebounceTimeoutRef.current);
@@ -136,60 +127,70 @@ const Home = ({ navigation }) => {
       if (destinationDebounceTimeoutRef.current) clearTimeout(destinationDebounceTimeoutRef.current);
       if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
     };
-  }, [destinationQuery, activeField]);
+  }, [destinationQuery, activeField,isDestinationSuggestionSelected]);
   
   const handleSuggestionPress = (suggestion, field = 'start') => {
     if (field === 'start') {
-      setSearchQuery(suggestion.title);
-      setSuggestions([]);
+        setSearchQuery(suggestion.title);
+        setSuggestions([]);  
+        setIsStartSuggestionSelected(true);
     } else {
-      setDestinationQuery(suggestion.title);
-      setDestinationSuggestions([]);
+        setDestinationQuery(suggestion.title);
+        setDestinationSuggestions([]);  
+        setIsDestinationSuggestionSelected(true);
     }
+
     Keyboard.dismiss();
+
+    setTimeout(() => {
+        fetch(
+            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${suggestion.placeId}&key=${GOOGLE_API_KEY}`
+        )
+        .then((response) => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+        })
+        .then((data) => {
+            if (data.result && data.result.geometry && data.result.geometry.location) {
+                const { lat, lng } = data.result.geometry.location;
+                if (mapRef.current) {
+                    mapRef.current.animateToRegion({
+                        latitude: lat,
+                        longitude: lng,
+                        latitudeDelta: 0.05,
+                        longitudeDelta: 0.05,
+                    });
+                }
+                if (isCreatingPath) {
+                    if (field === 'start') {
+                        setStartLocation({ latitude: lat, longitude: lng });
+                    } else {
+                        setDestinationLocation({ latitude: lat, longitude: lng });
+                    }
+                }
+            } else {
+                Alert.alert('Error', 'Place details not found');
+            }
+        })
+        .catch((error) => {
+            Alert.alert('Error', 'Failed to fetch place details');
+            console.error(error);
+        });
+    }, 0);
+};
+
+
   
-    fetch(
-      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${suggestion.placeId}&key=${GOOGLE_API_KEY}`
-    )
-    .then(response => {
-      if (!response.ok) throw new Error('Network response was not ok');
-      return response.json();
-    })
-    .then(data => {
-      if (data.result && data.result.geometry && data.result.geometry.location) {
-        const { lat, lng } = data.result.geometry.location;
-        if (mapRef.current) {
-          mapRef.current.animateToRegion({
-            latitude: lat,
-            longitude: lng,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
-        }
-        if (field === 'start') {
-          setStartLocation({ latitude: lat, longitude: lng });
-        } else {
-          setDestinationLocation({ latitude: lat, longitude: lng });
-        }
-      } else {
-        Alert.alert("Error", "Place details not found");
-      }
-    })
-    .catch(error => {
-      Alert.alert("Error", "Failed to fetch place details");
-      console.error(error);
-    });
-  };
-  
-const handleSearch = (field = 'start') => {
+  const handleSearch = (field = 'start') => {
     if (field === 'start') {
       if (!searchQuery.trim()) {
         Alert.alert("Enter search query", "Please type a location to search for.");
         return;
       }
       if (suggestions.length > 0) {
-        handleSuggestionPress(suggestions[0], 'start');
+        handleSuggestionPress(suggestions[0], 'start'); 
       } else {
+        
         const encodedQuery = encodeURIComponent(searchQuery);
         fetch(
           `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedQuery}&key=${GOOGLE_API_KEY}`
@@ -220,7 +221,7 @@ const handleSearch = (field = 'start') => {
         return;
       }
       if (destinationSuggestions.length > 0) {
-        handleSuggestionPress(destinationSuggestions[0], 'destination');
+        handleSuggestionPress(destinationSuggestions[0], 'destination'); // Same here for destination.
       } else {
         const encodedQuery = encodeURIComponent(destinationQuery);
         fetch(
@@ -247,7 +248,8 @@ const handleSearch = (field = 'start') => {
         });
       }
     }
-  };
+};
+
   
   const handleCreatePath = () => {
     setIsCreatingPath(true);
@@ -285,6 +287,24 @@ const handleSearch = (field = 'start') => {
     closeDrawer();
     navigation.navigate('User');
   };
+
+  const reverseGeocode = (coords, field) => {
+    fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.latitude},${coords.longitude}&key=${GOOGLE_API_KEY}`
+    )
+      .then(response => response.json())
+      .then(data => {
+        if (data.results.length > 0) {
+          const address = data.results[0].formatted_address;
+          if (field === 'start') {
+            setSearchQuery(address);
+          } else {
+            setDestinationQuery(address);
+          }
+        }
+      })
+      .catch(error => console.error("Reverse geocoding failed:", error));
+  };
   
   return (
     <TouchableWithoutFeedback onPress={() => {
@@ -292,7 +312,7 @@ const handleSearch = (field = 'start') => {
     }}>
       <View style={styles.container}>
         <View style={styles.mapContainer}>
-          <MapView
+        <MapView
             ref={mapRef}
             style={styles.map}
             initialRegion={{
@@ -306,29 +326,50 @@ const handleSearch = (field = 'start') => {
               urlTemplate={`https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${MAPY_API_KEY}`}
               zIndex={1}
             />
-            {startLocation && (
-              <Marker coordinate={startLocation} title="Start" />
+            {isCreatingPath && startLocation && (
+              <Marker
+                coordinate={startLocation}
+                draggable
+                pinColor='#449e48'
+                onDragEnd={(e) => {
+                  const newCoords = e.nativeEvent.coordinate;
+                  setStartLocation(newCoords);
+                  reverseGeocode(newCoords, 'start');
+                }}
+              />
             )}
-            {destinationLocation && (
-              <Marker coordinate={destinationLocation} title="Destination" />
+
+            {isCreatingPath && destinationLocation && (
+              <Marker
+                coordinate={destinationLocation}
+                draggable
+                onDragEnd={(e) => {
+                  const newCoords = e.nativeEvent.coordinate;
+                  setDestinationLocation(newCoords);
+                  reverseGeocode(newCoords, 'destination');
+                }}
+              />
             )}
           </MapView>
   
           <View style={styles.searchContainer}>
             {isCreatingPath ? (
               <View style={{ flex: 1 }}>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Starting Point"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setActiveField('start')}
-                  onSubmitEditing={() => handleSearch('start')}
-                />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Starting Point"
+                value={searchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  setIsStartSuggestionSelected(false); 
+                }}
+                onFocus={() => setActiveField('start')}
+                onSubmitEditing={() => handleSearch('start')}
+              />
                 {activeField === 'start' && isLoading && <ActivityIndicator size="small" color="#1E232C" />}
                 {activeField === 'start' && suggestions.length > 0 && (
                   <View style={styles.suggestionsContainer}>
-                    <ScrollView 
+                    <ScrollView
                       style={styles.suggestionsList}
                       keyboardShouldPersistTaps="always"
                     >
@@ -338,9 +379,7 @@ const handleSearch = (field = 'start') => {
                           style={styles.suggestionItem}
                           onPress={() => handleSuggestionPress(suggestion, 'start')}
                         >
-                          <Text style={styles.suggestionText}>
-                            {suggestion.title}
-                          </Text>
+                          <Text style={styles.suggestionText}>{suggestion.title}</Text>
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
@@ -348,34 +387,38 @@ const handleSearch = (field = 'start') => {
                 )}
   
                 <TextInput
-                  style={[styles.searchInput, { marginTop: 10 }]}
-                  placeholder="Destination"
-                  value={destinationQuery}
-                  onChangeText={setDestinationQuery}
-                  onFocus={() => setActiveField('destination')}
-                  onSubmitEditing={() => handleSearch('destination')}
-                />
+                        ref={destinationInputRef}
+                        style={[styles.searchInput, { marginTop: 10 }]}
+                        placeholder="Destination"
+                        value={destinationQuery}
+                        onChangeText={(text) => {
+                          setDestinationQuery(text);
+                          setIsDestinationSuggestionSelected(false);
+                        }}
+                        onFocus={() => setActiveField('destination')}
+                        onSubmitEditing={() => handleSearch('destination')}
+                      />
+
+
                 {activeField === 'destination' && isLoading && <ActivityIndicator size="small" color="#1E232C" />}
                 {activeField === 'destination' && destinationSuggestions.length > 0 && (
-                  <View style={styles.suggestionsContainer}>
-                    <ScrollView 
-                      style={styles.suggestionsList}
-                      keyboardShouldPersistTaps="always"
-                    >
-                      {destinationSuggestions.map((suggestion, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.suggestionItem}
-                          onPress={() => handleSuggestionPress(suggestion, 'destination')}
-                        >
-                          <Text style={styles.suggestionText}>
-                            {suggestion.title}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
+                <View style={styles.suggestionsContainer}>
+                  <ScrollView
+                    style={styles.suggestionsList}
+                    keyboardShouldPersistTaps="always"
+                  >
+                    {destinationSuggestions.map((suggestion, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.suggestionItem}
+                        onPress={() => handleSuggestionPress(suggestion, 'destination')}
+                      >
+                        <Text style={styles.suggestionText}>{suggestion.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
   
                 <View style={styles.finishButtonContainer}>
                     <ButtonDark 
