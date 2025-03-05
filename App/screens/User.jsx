@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 
 const User = () => {
 
     return (
         <View>
-           HUIII
+          <Text>HUIII </Text> 
         </View>
     );
 };
