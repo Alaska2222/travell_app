@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, TextInput, ScrollView, TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 const SearchInput = ({
@@ -9,6 +8,7 @@ const SearchInput = ({
   isLoading,
   onSuggestionPress,
 }) => {
+  
   return (
     <View style={styles.container}>
       <TextInput

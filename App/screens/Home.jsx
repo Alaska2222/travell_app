@@ -1,608 +1,485 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback} from 'react-native';
-import MapView, { Marker, UrlTile } from 'react-native-maps';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback, Alert, Button, Switch } from 'react-native';
+import MapView, { Marker, UrlTile, Polyline } from 'react-native-maps';
+import styles from '../styles/homeScreenStyles';
 import ButtonDark from '../components/ButtonDark';
+import { useRoutePlanner } from '../hooks/useRoutePlanner';
+import { analyzeTowerCoverageOnRouteWithCSV, downloadCSVFromGithub } from "../utils/otherMetricsFunctions";
+import { fetchUVandSunTimes, fetchAirPollutionSummary, fetchWildfireRiskFromCSV, fetchWeatherForecastSummary } from "../utils/weatherFunctions";
+import { fetchWaterFeatures, fetchShops, fetchNaturalFeatures, fetchOtherPOIs, fetchEmergencyPOIs, fetchInformationPOIs, fetchHazards } from "../utils/mapFunctions";
+import { fetchElevationData } from "../utils/elevationFunctions";
+import { haversineDistanceMeters } from "../utils/distanceFunctions";
+import * as FileSystem from "expo-file-system";
+import { classifyRisk } from "../utils/classificationTree";
+import { MAPY_API_KEY } from '../config.js';
 
-const Home = ({ navigation }) => {
-  const MAPY_API_KEY = 'gFeJKlnchNFmUiLYjhegVqd2x7dJ2wq34nmUCYhtWRc';
-  const GOOGLE_API_KEY = 'AIzaSyAHby6PMEKN1H4k9QUbTRlBqtzpGiBLsUA';
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [destinationQuery, setDestinationQuery] = useState('');
-  const [destinationSuggestions, setDestinationSuggestions] = useState([]);
-  
-  const [isCreatingPath, setIsCreatingPath] = useState(false);
-  const [activeField, setActiveField] = useState('start'); 
-  const [startLocation, setStartLocation] = useState(null);
-  const [destinationLocation, setDestinationLocation] = useState(null);
-  
-  const [drawerVisible, setDrawerVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+
+const Home = () => {
   const mapRef = useRef(null);
-  const debounceTimeoutRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  
-  const destinationDebounceTimeoutRef = useRef(null);
-  const destinationAbortControllerRef = useRef(null);
-  const [isStartSuggestionSelected, setIsStartSuggestionSelected] = useState(false);
-  const [isDestinationSuggestionSelected, setIsDestinationSuggestionSelected] = useState(false);
   const destinationInputRef = useRef(null);
 
-  useEffect(() => {
-    if (activeField !== 'start' || isStartSuggestionSelected) return;
-      if (searchQuery.length <= 2) {
-    setSuggestions([]);
-    if (abortControllerRef.current) abortControllerRef.current.abort();
-    return;
-  }
-  
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-  
-    debounceTimeoutRef.current = setTimeout(() => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      abortControllerRef.current = new AbortController();
-      setIsLoading(true);
-      const encodedQuery = encodeURIComponent(searchQuery);
-      fetch(
-        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedQuery}&key=${GOOGLE_API_KEY}`,
-        { signal: abortControllerRef.current.signal }
-      )
-      .then(response => {
-        if (!response.ok) throw new Error('Network response was not ok');
-        return response.json();
-      })
-      .then(data => {
-        if (data.predictions) {
-          const formatted = data.predictions.map(prediction => ({
-            title: prediction.description,
-            placeId: prediction.place_id,
-          }));
-          setSuggestions(formatted);
-        }
-      })
-      .catch(error => {
-        if (error.name !== 'AbortError') {
-          Alert.alert("Error", "Failed to fetch suggestions");
-          console.error(error);
-        }
-      })
-      .finally(() => setIsLoading(false));
-    }, 300);
-  
-    return () => {
-      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, [searchQuery, activeField, isStartSuggestionSelected]);
-  
+  const handleClassify = () => {
+    const result = classifyRisk(metricsRef.current);
+ 
+    console.log("RISK RESULT:", result);
+    setRiskPopup(result);
+  };
+  const {
+    showMarkers,
+    searchQuery,
+    setSearchQuery,
+    suggestions,
+    setSuggestions,
+    destinationQuery,
+    setDestinationQuery,
+    destinationSuggestions,
+    setDestinationSuggestions,
+    isCreatingPath,
+    setIsCreatingPath,
+    activeField,
+    setActiveField,
+    startLocation,
+    setStartLocation,
+    destinationLocation,
+    setDestinationLocation,
+    handleSearch,
+    handleSuggestionPress,
+    handleFinishPath,
+    setJustSelectedStartSuggestion,
+    setJustSelectedDestinationSuggestion,
+  } = useRoutePlanner(mapRef);
+
+const [routeCoordinates, setRouteCoordinates] = useState([]);
+  const [waterFeatures, setWaterFeatures] = useState([]);
+  const [shops, setShops] = useState([]);
+  const [naturalFeatures, setNaturalFeatures] = useState([]);
+  const [otherPOIs, setOtherPOIs] = useState([]);
+  const [emergencyPOIs, setEmergencyPOIs] = useState([]);
+  const [informationPOIs, setinformationPOIs] = useState([]);
+  const [hazards, setHazards] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showTowers, setShowTowers] = useState(false);
+  const [riskPopup, setRiskPopup] = useState(null);
+  const [pathFinished, setPathFinished] = useState(false);
+  const towerDataRef = useRef([]);
+  const airQuality = useRef({});
+  const weatherSummary = useRef({});
+  const uvSunData = useRef({});
+  const fireRisk = useRef({});
+  const cellCoverage = useRef({});
+  const poiCounts = useRef({});
+  const metricsRef = useRef({});
+
+
+  const [showPOI, setShowPOI] = useState(false);
+  const [poiRadius, setPoiRadius] = useState("5km");
+  const radiusOptions = ["1km", "2km", "5km", "10km", ">10km"];
+  const [metricsReady, setMetricsReady] = useState(false); // false
+  const radiusBounds = {
+    "1km": [0, 1000],
+    "2km": [1000, 2000],
+    "5km": [2000, 5000],
+    "10km": [5000, 10000],
+    ">10km": [10000, 20000],
+  };
 
   useEffect(() => {
-    if (activeField !== 'destination' || isDestinationSuggestionSelected) return;
-    if (destinationQuery.length <= 2) {
-    setDestinationSuggestions([]);
-    if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
-    return;
-  }
-  
-    if (destinationDebounceTimeoutRef.current) {
-      clearTimeout(destinationDebounceTimeoutRef.current);
-    }
-  
-    destinationDebounceTimeoutRef.current = setTimeout(() => {
-      if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
-      destinationAbortControllerRef.current = new AbortController();
-      setIsLoading(true);
-      const encodedQuery = encodeURIComponent(destinationQuery);
-      fetch(
-        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedQuery}&key=${GOOGLE_API_KEY}`,
-        { signal: destinationAbortControllerRef.current.signal }
-      )
-      .then(response => {
-        if (!response.ok) throw new Error('Network response was not ok');
-        return response.json();
-      })
-      .then(data => {
-        if (data.predictions) {
-          const formatted = data.predictions.map(prediction => ({
-            title: prediction.description,
-            placeId: prediction.place_id,
-          }));
-          setDestinationSuggestions(formatted);
-        }
-      })
-      .catch(error => {
-        if (error.name !== 'AbortError') {
-          Alert.alert("Error", "Failed to fetch destination suggestions");
-          console.error(error);
-        }
-      })
-      .finally(() => setIsLoading(false));
-    }, 300);
-  
-    return () => {
-      if (destinationDebounceTimeoutRef.current) clearTimeout(destinationDebounceTimeoutRef.current);
-      if (destinationAbortControllerRef.current) destinationAbortControllerRef.current.abort();
+    const loadTowerData = async () => {
+      await downloadCSVFromGithub(towerDataRef);
     };
-  }, [destinationQuery, activeField,isDestinationSuggestionSelected]);
-  
-  const handleSuggestionPress = (suggestion, field = 'start') => {
-    if (field === 'start') {
-        setSearchQuery(suggestion.title);
-        setSuggestions([]);  
-        setIsStartSuggestionSelected(true);
-    } else {
-        setDestinationQuery(suggestion.title);
-        setDestinationSuggestions([]);  
-        setIsDestinationSuggestionSelected(true);
+    loadTowerData();
+  }, []);
+
+  const levelColors = {
+    'Very Low': '#66bb6a',   
+    'Low':      '#4caf50',   
+    'Medium':   '#ffa726',   
+    'High':     '#f44336',  
+    'Very High':'#b71c1c',   
+  };
+  const generatePath = async () => {
+    setIsLoading(true);
+    setMetricsReady(false);
+    try {
+      const url = `https://api.mapy.cz/v1/routing/route?start=${startLocation.longitude},${startLocation.latitude}&end=${destinationLocation.longitude},${destinationLocation.latitude}&routeType=foot_fast&lang=en&format=geojson&avoidToll=false&apikey=${MAPY_API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      const coordinates = data.geometry.geometry.coordinates.map((coord) => ({ latitude: coord[1], longitude: coord[0] }));
+      const fullRoute = [startLocation, ...coordinates, destinationLocation];
+      setRouteCoordinates(fullRoute);
+
+
+      let totalDistanceMeters = 0;
+      for (let i = 1; i < fullRoute.length; i++) {
+        totalDistanceMeters += haversineDistanceMeters(
+          fullRoute[i - 1].latitude,
+          fullRoute[i - 1].longitude,
+          fullRoute[i].latitude,
+          fullRoute[i].longitude
+        );
+      }
+      let localElevation = {};
+      await fetchElevationData(fullRoute, (data) => localElevation = data);
+      await fetchWaterFeatures(fullRoute, setWaterFeatures, (c) => poiCounts.current["Water"] = c);
+      await fetchShops(fullRoute, setShops, (c) => poiCounts.current["Shop"] = c);
+      await fetchOtherPOIs(fullRoute, setOtherPOIs, (c) => poiCounts.current["Other POI"] = c);
+      await fetchNaturalFeatures(fullRoute, setNaturalFeatures, (c) => poiCounts.current["Natural Feature"] = c);
+      await fetchHazards(fullRoute, setHazards, (c) => poiCounts.current["Hazard"] = c);
+      await fetchEmergencyPOIs(fullRoute, setEmergencyPOIs, (c) => poiCounts.current["Emergency POI"] = c);
+      await fetchInformationPOIs(fullRoute, setinformationPOIs, (c) => poiCounts.current["Information"] = c);
+      await fetchAirPollutionSummary(fullRoute, (d) => airQuality.current = d);
+      await fetchWeatherForecastSummary(fullRoute, (d) => weatherSummary.current = d);
+      await fetchUVandSunTimes(startLocation.latitude, startLocation.longitude, (d) => uvSunData.current = d);
+      await fetchWildfireRiskFromCSV(fullRoute, (d) => fireRisk.current = d);
+      await analyzeTowerCoverageOnRouteWithCSV(fullRoute, (d) => cellCoverage.current = d, towerDataRef);
+    
+      console.log("POI COUNTS", poiCounts.current);
+      metricsRef.current = {
+        "Start Coordinates": startLocation,
+        "End Coordinates": destinationLocation,
+        "Min Elevation": localElevation.minElevation,
+        "Max Elevation": localElevation.maxElevation,
+        "Min Slope Angle": localElevation.minSlopeAngle,
+        "Max Slope Angle": localElevation.maxSlopeAngle,
+        "Total Route Length (m)": totalDistanceMeters.toFixed(2),
+        "Total Elevation Gain": localElevation.totalElevationGain,
+        "Average Elevation Gain": localElevation.avgElevationGain,
+        ...["Water", "Shop", "Natural Feature", "Hazard", "Other POI", "Emergency POI", "Information"].reduce((acc, type) => {
+          acc[`POI counts for type ${type}`] = poiCounts.current[type] || {};
+          return acc;
+        }, {}),        
+        "Start AQI": airQuality.current.start || {},
+        "End AQI": airQuality.current.end || {},
+        "Min AQI": airQuality.current.min || {},
+        "Max AQI": airQuality.current.max || {},
+        "Min Temperature": weatherSummary.current.minTemp,
+        "Max Temperature": weatherSummary.current.maxTemp,
+        "Max Wind Speed": weatherSummary.current.maxWind,
+        "Max Rain (3h)": weatherSummary.current.maxRain,
+        "Max Snow (3h)": weatherSummary.current.maxSnow,
+        "Min Visibility": weatherSummary.current.minVisibility,
+        "Max Humidity": weatherSummary.current.maxHumidity,
+        "UV Index": uvSunData.current.uvi,
+        "Sunrise": uvSunData.current.sunrise,
+        "Sunset": uvSunData.current.sunset,
+        "Fire Zones": fireRisk.current || {},
+        "Tower types along route": cellCoverage.current.radioCounts || {},
+        "% of route covered (≤3 km)": Number(cellCoverage.current.coverage_percent || 0),
+      };
+      await FileSystem.writeAsStringAsync(FileSystem.documentDirectory + 'route_metrics.json', JSON.stringify(metricsRef.current, null, 2));
+      console.log(JSON.stringify(metricsRef.current, null, 2));
+      setMetricsReady(true);
+      setPathFinished(true);
+    } catch (error) {
+      Alert.alert("Route Error", error.message);
+    } finally {
+      setIsLoading(false);
     }
+  };
+  const isTowerNearRoute = (lat, lon) => {
+    return routeCoordinates.some((pt) => {
+      return haversineDistanceMeters(lat, lon, pt.latitude, pt.longitude) <= 3000;
+    });
+  };
+  const getPOIMarkers = () => {
+    const pois = [];
+    const [minD, maxD] = radiusBounds[poiRadius];
+    const routeLine = routeCoordinates;
 
-    Keyboard.dismiss();
+    const isInRange = (lat, lon) => {
+      if (!routeLine.length) return false;
+      return routeLine.some((pt) => {
+        const dist = haversineDistanceMeters(lat, lon, pt.latitude, pt.longitude);
+        return dist >= minD && dist <= maxD;
+      });
+    };
 
-    setTimeout(() => {
-        fetch(
-            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${suggestion.placeId}&key=${GOOGLE_API_KEY}`
-        )
-        .then((response) => {
-            if (!response.ok) throw new Error('Network response was not ok');
-            return response.json();
-        })
-        .then((data) => {
-            if (data.result && data.result.geometry && data.result.geometry.location) {
-                const { lat, lng } = data.result.geometry.location;
-                if (mapRef.current) {
-                    mapRef.current.animateToRegion({
-                        latitude: lat,
-                        longitude: lng,
-                        latitudeDelta: 0.05,
-                        longitudeDelta: 0.05,
-                    });
-                }
-                if (isCreatingPath) {
-                    if (field === 'start') {
-                        setStartLocation({ latitude: lat, longitude: lng });
-                    } else {
-                        setDestinationLocation({ latitude: lat, longitude: lng });
-                    }
-                }
-            } else {
-                Alert.alert('Error', 'Place details not found');
-            }
-        })
-        .catch((error) => {
-            Alert.alert('Error', 'Failed to fetch place details');
-            console.error(error);
-        });
-    }, 0);
-};
+    const addMarkers = (data, color, label) => {
+      data.forEach(p => {
+        if (isInRange(p.latitude, p.longitude)) {
+          pois.push({ ...p, color, label });
+        }
+      });
+    };
 
-
-  
-  const handleSearch = (field = 'start') => {
-    if (field === 'start') {
-      if (!searchQuery.trim()) {
-        Alert.alert("Enter search query", "Please type a location to search for.");
-        return;
-      }
-      if (suggestions.length > 0) {
-        handleSuggestionPress(suggestions[0], 'start'); 
-      } else {
-        
-        const encodedQuery = encodeURIComponent(searchQuery);
-        fetch(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedQuery}&key=${GOOGLE_API_KEY}`
-        )
-        .then(response => {
-          if (!response.ok) throw new Error('Network response was not ok');
-          return response.json();
-        })
-        .then(data => {
-          if (data.predictions && data.predictions.length > 0) {
-            const firstPrediction = data.predictions[0];
-            handleSuggestionPress({
-              title: firstPrediction.description,
-              placeId: firstPrediction.place_id,
-            }, 'start');
-          } else {
-            Alert.alert("No results found", "Please try a different search term.");
-          }
-        })
-        .catch(error => {
-          Alert.alert("Error", "Failed to search for the location.");
-          console.error(error);
-        });
-      }
-    } else {
-      if (!destinationQuery.trim()) {
-        Alert.alert("Enter search query", "Please type a destination to search for.");
-        return;
-      }
-      if (destinationSuggestions.length > 0) {
-        handleSuggestionPress(destinationSuggestions[0], 'destination'); // Same here for destination.
-      } else {
-        const encodedQuery = encodeURIComponent(destinationQuery);
-        fetch(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedQuery}&key=${GOOGLE_API_KEY}`
-        )
-        .then(response => {
-          if (!response.ok) throw new Error('Network response was not ok');
-          return response.json();
-        })
-        .then(data => {
-          if (data.predictions && data.predictions.length > 0) {
-            const firstPrediction = data.predictions[0];
-            handleSuggestionPress({
-              title: firstPrediction.description,
-              placeId: firstPrediction.place_id,
-            }, 'destination');
-          } else {
-            Alert.alert("No results found", "Please try a different search term.");
-          }
-        })
-        .catch(error => {
-          Alert.alert("Error", "Failed to search for the destination.");
-          console.error(error);
-        });
-      }
-    }
-};
-
-  
-  const handleCreatePath = () => {
+    addMarkers(waterFeatures, "blue", "Water");
+    addMarkers(emergencyPOIs, "red", "Emergency");
+    addMarkers(hazards, "orange", "Hazard");
+    addMarkers(otherPOIs, "white", "Other POI");
+    addMarkers(informationPOIs, "black", "Information");
+    addMarkers(naturalFeatures, "green", "Natural Feature");
+    addMarkers(shops, "yellow", "Shop");
+    return pois;
+  };
+  const handleChangePath = () => {
+    setPathFinished(false);
     setIsCreatingPath(true);
     setActiveField('start');
     setStartLocation(null);
     setDestinationLocation(null);
     setSearchQuery('');
     setDestinationQuery('');
-    console.log('Create Path mode enabled');
-  };
-  
-  const handleFinishPath = () => {
-    if (!startLocation || !destinationLocation) {
-      Alert.alert("Incomplete", "Please set both starting point and destination.");
-      return;
-    }
-    setIsCreatingPath(false);
-    Alert.alert("Path Created", "Markers for start and destination are displayed on the map.");
-  };
-  
-  const openDrawer = () => setDrawerVisible(true);
-  const closeDrawer = () => setDrawerVisible(false);
-  const handleLogout = () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to Logout?",
-      [
-        { text: "Reject", onPress: () => {}, style: "cancel" },
-        { text: "Accept", onPress: () => console.log("Logged out") }
-      ]
-    );
-    closeDrawer();
-  };
-  const handleProfile = () => {
-    closeDrawer();
-    navigation.navigate('User');
+    setRouteCoordinates([]);
+    setSuggestions([]);
+    setDestinationSuggestions([]);
   };
 
-  const reverseGeocode = (coords, field) => {
-    fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.latitude},${coords.longitude}&key=${GOOGLE_API_KEY}`
-    )
-      .then(response => response.json())
-      .then(data => {
-        if (data.results.length > 0) {
-          const address = data.results[0].formatted_address;
-          if (field === 'start') {
-            setSearchQuery(address);
-          } else {
-            setDestinationQuery(address);
-          }
-        }
-      })
-      .catch(error => console.error("Reverse geocoding failed:", error));
-  };
-  
   return (
-    <TouchableWithoutFeedback onPress={() => {
-      Keyboard.dismiss();
-    }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.container}>
+        {isLoading && (
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10,
+          }}>
+            <View style={{
+              backgroundColor: 'white',
+              padding: 20,
+              borderRadius: 10,
+            }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E232C' }}>
+                Gathering Metrics...
+              </Text>
+            </View>
+          </View>
+        )}
         <View style={styles.mapContainer}>
         <MapView
             ref={mapRef}
-            style={styles.map}
+            style={{ flex: 1 }}
             initialRegion={{
-              latitude: 48.82944,
-              longitude: 23.00083,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
+              latitude: 48.6416079,
+              longitude: 23.2280052,
+              latitudeDelta: 0.2,
+              longitudeDelta: 0.2,
             }}
           >
-            <UrlTile
-              urlTemplate={`https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${MAPY_API_KEY}`}
-              zIndex={1}
-            />
-            {isCreatingPath && startLocation && (
-              <Marker
-                coordinate={startLocation}
-                draggable
-                pinColor='#449e48'
-                onDragEnd={(e) => {
-                  const newCoords = e.nativeEvent.coordinate;
-                  setStartLocation(newCoords);
-                  reverseGeocode(newCoords, 'start');
-                }}
-              />
-            )}
-
-            {isCreatingPath && destinationLocation && (
-              <Marker
-                coordinate={destinationLocation}
-                draggable
-                onDragEnd={(e) => {
-                  const newCoords = e.nativeEvent.coordinate;
-                  setDestinationLocation(newCoords);
-                  reverseGeocode(newCoords, 'destination');
-                }}
-              />
-            )}
-          </MapView>
-  
-          <View style={styles.searchContainer}>
-            {isCreatingPath ? (
-              <View style={{ flex: 1 }}>
+        <UrlTile
+          urlTemplate={`https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${MAPY_API_KEY}`}
+          zIndex={1}
+        />
+        <Marker coordinate={startLocation} title="Start" />
+        <Marker coordinate={destinationLocation} title="Destination" />
+        {routeCoordinates.length > 0 && (
+          <Polyline coordinates={routeCoordinates} strokeWidth={4} strokeColor="blue" />
+        )}
+        {showPOI && getPOIMarkers().map((p, i) => (
+          <Marker
+            key={i}
+            coordinate={{ latitude: p.latitude, longitude: p.longitude }}
+            title={p.label}
+            pinColor={p.color}
+          />
+        ))}
+        {showTowers && cellCoverage.current?.towerList?.filter(tower =>
+          isTowerNearRoute(tower.lat, tower.lon)
+        ).map((tower, i) => (
+          <Marker
+            key={`tower-${i}`}
+            coordinate={{ latitude: tower.lat, longitude: tower.lon }}
+            title={`Cell Tower ${i + 1}`}
+            pinColor="purple"
+          />
+        ))}
+      </MapView>
+     
+          {isCreatingPath && !pathFinished && (
+            <View style={styles.searchContainer}>
               <TextInput
-                style={styles.searchInput}
+                style={[styles.searchInput, { height: 40 }]}
                 placeholder="Starting Point"
                 value={searchQuery}
-                onChangeText={(text) => {
-                  setSearchQuery(text);
-                  setIsStartSuggestionSelected(false); 
+                onChangeText={setSearchQuery}
+                onFocus={() => {
+                  setActiveField('start');
+                  setJustSelectedStartSuggestion(false);
+                  setSearchQuery('');
+                  setSuggestions([]);
                 }}
-                onFocus={() => setActiveField('start')}
                 onSubmitEditing={() => handleSearch('start')}
               />
-                {activeField === 'start' && isLoading && <ActivityIndicator size="small" color="#1E232C" />}
-                {activeField === 'start' && suggestions.length > 0 && (
-                  <View style={styles.suggestionsContainer}>
-                    <ScrollView
-                      style={styles.suggestionsList}
-                      keyboardShouldPersistTaps="always"
+              {activeField === 'start' && suggestions.length > 0 && (
+                <ScrollView style={styles.suggestionsList} keyboardShouldPersistTaps="always">
+                  {suggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionItem}
+                      onPress={() => handleSuggestionPress(suggestion, 'start')}
                     >
-                      {suggestions.map((suggestion, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.suggestionItem}
-                          onPress={() => handleSuggestionPress(suggestion, 'start')}
-                        >
-                          <Text style={styles.suggestionText}>{suggestion.title}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-  
-                <TextInput
-                        ref={destinationInputRef}
-                        style={[styles.searchInput, { marginTop: 10 }]}
-                        placeholder="Destination"
-                        value={destinationQuery}
-                        onChangeText={(text) => {
-                          setDestinationQuery(text);
-                          setIsDestinationSuggestionSelected(false);
-                        }}
-                        onFocus={() => setActiveField('destination')}
-                        onSubmitEditing={() => handleSearch('destination')}
-                      />
+                      <Text style={styles.suggestionText}>{suggestion.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              <TextInput
+                ref={destinationInputRef}
+                style={[styles.searchInput, { marginTop: 10, height: 40 }]}
+                placeholder="Destination"
+                value={destinationQuery}
+                onChangeText={setDestinationQuery}
+                onFocus={() => {
+                  setActiveField('destination');
+                  setJustSelectedDestinationSuggestion(false);
+                  setDestinationQuery('');
+                  setDestinationSuggestions([]);
+                }}
+                onSubmitEditing={() => handleSearch('destination')}
+              />
+              {activeField === 'destination' && destinationSuggestions.length > 0 && (
+                <ScrollView style={styles.suggestionsList} keyboardShouldPersistTaps="always">
+                  {destinationSuggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionItem}
+                      onPress={() => handleSuggestionPress(suggestion, 'destination')}
+                    >
+                      <Text style={styles.suggestionText}>{suggestion.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              <View style={{ marginTop: 20 }}>
+                <ButtonDark
+                  text="Finish"
+                  width="100%"
+                  onPress={async () => {
+                    handleFinishPath();
+                    await generatePath();
+                    setPathFinished(true);
+                  }}
+                />
+              </View>
+            </View>
+          )}
+          {riskPopup && (
+  <View style={popupStyles.container}>
+    <Text style={popupStyles.title}>📊 Risk Analysis</Text>
+    {riskPopup.riskValues.map(({ name, value, level }, i) => (
+      <View key={i} style={popupStyles.barRow}>
+      <Text style={popupStyles.barLabel}>{name} ({level})</Text>
+        <View style={popupStyles.barBackground}>
+          <View
+            style={[
+              popupStyles.barFill,
+              {
+                width: `${value}%`,               
+                backgroundColor: levelColors[level] || '#4caf50',
+              }
+            ]}
+          />
+        </View>
+        <Text style={popupStyles.barValue}>{value.toFixed(1)}</Text>
+      </View>
+    ))}
 
-
-                {activeField === 'destination' && isLoading && <ActivityIndicator size="small" color="#1E232C" />}
-                {activeField === 'destination' && destinationSuggestions.length > 0 && (
-                <View style={styles.suggestionsContainer}>
-                  <ScrollView
-                    style={styles.suggestionsList}
-                    keyboardShouldPersistTaps="always"
-                  >
-                    {destinationSuggestions.map((suggestion, index) => (
+    <Text style={popupStyles.subTitle}>💡 Explanation:</Text>
+    {riskPopup.recommendations.map((rec, i) => (
+      <Text key={i} style={popupStyles.recommendation}>• {rec.trim()}</Text>
+    ))}
+    <TouchableOpacity onPress={() => setRiskPopup(null)} style={popupStyles.closeBtn}>
+      <Text style={popupStyles.closeText}>Close</Text>
+    </TouchableOpacity>
+  </View>
+)}
+          { pathFinished  && (
+            <View style={{ marginTop: 20 }}>
+              <ButtonDark text="Change Path" width="100%" onPress={handleChangePath} />
+              <View style={{ marginTop: 20 }}>
+                <View style={styles.row}>
+                  <Text>Show POI</Text>
+                  <Switch value={showPOI} onValueChange={setShowPOI} />
+                </View>
+                {showPOI && (
+                  <View style={[styles.row, { flexWrap: 'wrap' }]}>
+                    {radiusOptions.map((opt) => (
                       <TouchableOpacity
-                        key={index}
-                        style={styles.suggestionItem}
-                        onPress={() => handleSuggestionPress(suggestion, 'destination')}
+                        key={opt}
+                        style={{ marginRight: 10, marginTop: 10 }}
+                        onPress={() => setPoiRadius(opt)}
                       >
-                        <Text style={styles.suggestionText}>{suggestion.title}</Text>
+                        <Text
+                          style={{
+                            padding: 6,
+                            borderRadius: 6,
+                            backgroundColor: poiRadius === opt ? '#1E232C' : '#ccc',
+                            color: 'white',
+                          }}
+                        >
+                          {opt}
+                        </Text>
                       </TouchableOpacity>
                     ))}
-                  </ScrollView>
-                </View>
-              )}
-  
-                <View style={styles.finishButtonContainer}>
-                    <ButtonDark 
-                    text="Finish" 
-                    width='100%'
-                    onPress={handleFinishPath} 
-                        />
+                  </View>
+                )} 
+                <View style={{ marginTop: 20 }}>
+                  <Button title="Classify Risk" onPress={handleClassify} color="#c62828" />
                 </View>
               </View>
-            ) : (
-              <>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search for a place..."
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setActiveField('start')}
-                  onSubmitEditing={() => handleSearch('start')}
-                />
-                {activeField === 'start' && isLoading && <ActivityIndicator size="small" color="#1E232C" />}
-                {activeField === 'start' && suggestions.length > 0 && (
-                  <View style={styles.suggestionsContainer}>
-                    <ScrollView 
-                      style={styles.suggestionsList}
-                      keyboardShouldPersistTaps="always"
-                    >
-                      {suggestions.map((suggestion, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.suggestionItem}
-                          onPress={() => handleSuggestionPress(suggestion, 'start')}
-                        >
-                          <Text style={styles.suggestionText}>
-                            {suggestion.title}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </>
-            )}
-  
-            <TouchableOpacity style={styles.iconContainer} onPress={openDrawer}>
-              <Icon name="user" size={20} color="#1E232C" />
-            </TouchableOpacity>
-          </View>
+            </View>
+          )}
         </View>
-  
-        {!isCreatingPath && (
+        {!isCreatingPath && !pathFinished && (
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.button} onPress={handleCreatePath}>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                setIsCreatingPath(true);
+                setActiveField('start');
+                setStartLocation(null);
+                setDestinationLocation(null);
+                setSearchQuery('');
+                setDestinationQuery('');
+                setRouteCoordinates([]);
+                setSuggestions([]);
+                setDestinationSuggestions([]);
+              }}
+            >
               <Text style={styles.buttonText}>Create Path</Text>
             </TouchableOpacity>
           </View>
         )}
-  
-        <Modal
-          visible={drawerVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={closeDrawer}
-        >
-          <TouchableOpacity style={styles.modalOverlay} onPress={closeDrawer}>
-            <View style={styles.drawerContainer}>
-              <TouchableOpacity style={styles.drawerOption} onPress={handleProfile}>
-                <Text style={styles.drawerOptionText}>Profile</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.drawerOption} onPress={handleLogout}>
-                <Text style={styles.drawerOptionText}>Log Out</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
       </View>
     </TouchableWithoutFeedback>
   );
 };
-
-const styles = StyleSheet.create({
+const popupStyles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 10,
-    backgroundColor: '#E3E7E8',
-  },
-  mapContainer: {
-    flex: 1,
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'white',
+    padding: 16,
     borderRadius: 12,
-    overflow: 'hidden',
-    position: 'relative',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width:0, height:2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 999,
   },
-  map: {
-    width: '100%',
-    height: '100%',
-  },
-  searchContainer: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'white',
-    borderColor: 'gray',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    zIndex: 1000,
-  },
-  searchInput: {
-    height: 35,
-    paddingHorizontal: 10,
-    backgroundColor: 'white',
-
-  },
-  iconContainer: {
-    position: 'absolute',
-    right: 10,
-    top: 15,
-  },
-  suggestionsContainer: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    maxHeight: 200,
-    elevation: 3,
-    marginTop: 5,
-  },
-  suggestionsList: {
-    paddingHorizontal: 10,
-  },
-  suggestionItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  suggestionText: {
-    fontSize: 16,
-    color: '#1E232C',
-  },
-  buttonContainer: {
-    marginTop: 30,
-    marginBottom: 30,
-    alignItems: 'center',
-  },
-  button: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(30, 35, 44, 0.7)',
-    width: '85%',
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    marginBottom: 10,
-  },
-  buttonText: {
-    fontSize: 15,
-    fontFamily: 'Urbanist_600SemiBold',
-    color: '#1E232C',
-  },
-  modalOverlay: {
+  title: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+  barRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  barLabel: { width: 80, fontSize: 12 },          
+  barBackground: {
     flex: 1,
-    justifyContent: 'flex-end',
+    height: 6,                                     
+    backgroundColor: '#eee',
+    borderRadius: 3,
+    marginHorizontal: 6,
   },
-  drawerContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  drawerOption: {
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  drawerOptionText: {
-    fontSize: 18,
-    fontFamily: 'Urbanist_600SemiBold',
-    color: '#1E232C',
-  },
-  finishButtonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',  
-        alignItems: 'center',   
-        marginTop: 20,             
-    },
+  barFill: { height: 6, borderRadius: 3 },       
+  barValue: { width: 30, fontSize: 12, textAlign: 'right' },
+  subTitle: { marginTop: 10, fontWeight: 'bold' },
+  recommendation: { fontSize: 12, marginVertical: 2 },
+  closeBtn: { marginTop: 10 },
+  closeText: { color: '#c62828', textAlign: 'right' },
 });
-
 export default Home;

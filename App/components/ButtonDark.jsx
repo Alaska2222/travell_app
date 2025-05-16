@@ -1,6 +1,4 @@
-import React from 'react';
 import { Text, StyleSheet, TouchableOpacity } from 'react-native';
-
 const ButtonDark = ({ width = '85%', text = 'Login', onPress }) => {
     return (
         <TouchableOpacity
@@ -10,7 +8,6 @@ const ButtonDark = ({ width = '85%', text = 'Login', onPress }) => {
         </TouchableOpacity>
     );
 };
-
 const styles = StyleSheet.create({
     button: {
         borderRadius: 8,

@@ -2,7 +2,8 @@
 
 # dependencies
 node_modules/
-
+config.js
+/datasets/
 # Expo
 .expo/
 dist/

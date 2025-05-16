@@ -1,4 +1,3 @@
-import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
 const ButtonComponent = ({ text, onPress }) => {
@@ -8,7 +7,6 @@ const ButtonComponent = ({ text, onPress }) => {
     </TouchableOpacity>
   );
 };
-
 const styles = StyleSheet.create({
   button: {
     backgroundColor: '#1E232C',

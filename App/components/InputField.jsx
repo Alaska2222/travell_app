@@ -1,6 +1,4 @@
-import React from 'react';
 import { TextInput, StyleSheet } from 'react-native';
-
 const InputField = ({ 
     value, 
     onChangeText, 
@@ -26,7 +24,6 @@ const InputField = ({
         />
     );
 };
-
 const styles = StyleSheet.create({
     input: {
         borderRadius: 8,

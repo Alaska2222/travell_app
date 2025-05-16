@@ -1,6 +1,4 @@
-import React from 'react';
 import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
-
 const BottomText = ({ text = "Don't have an account?", buttonText = "Sign Up", navigation, navigateTo = 'Page' }) => {
     return (
         <View style={styles.conteiner}> 
@@ -13,7 +11,6 @@ const BottomText = ({ text = "Don't have an account?", buttonText = "Sign Up", n
         </View>
     );
 };
-
 const styles = StyleSheet.create({
     conteiner: {
         flexDirection: 'row',
