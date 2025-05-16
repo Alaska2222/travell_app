@@ -3,172 +3,161 @@ export const classifyRisk = (metrics) => {
 
   // === Hiking Safety Index (HSI) ===
   const weights = {
-    slope: 0.407,        // slope weight
-    altitude: 0.262,     // altitude weight
-    length: 0.174,       // distance weight
-    time: 0.109,         // walking time weight
-    water: 0.048         // water access weight
+    slope: 0.407,
+    altitude: 0.262,
+    length: 0.174,
+    time: 0.109,
+    water: 0.048
   };
 
-const slope = metrics["Max Slope Angle"] || 0;
-const slopeScore = Math.min(slope, 12) / 12;
+  // === Slope Score ===
+  const slope = metrics["Max Slope Angle"] || 0;
+  const slopeScore = Math.max(0, 1 - slope / 12);
 
-const maxElevation = metrics["maxElevation"] || 0;
-const altitudeScore = 1 - Math.min(maxElevation / 2500, 1);
+  // === Water Score ===
+  const water0 = Object.values(metrics["POI counts for type Water"]?.["2km"] || {}).reduce((a, b) => a + b, 0);
+  const water5 = Object.values(metrics["POI counts for type Water"]?.["5km"] || {}).reduce((a, b) => a + b, 0);
+  const waterCount = water0 + water5;
+  let waterScore = 0.1;
+  if (waterCount >= 3) waterScore = 1.0;
+  else if (waterCount >= 1) waterScore = 0.5;
+  if (waterScore <= 0.5) recommendations.push(`🚰 Water POIs: ${waterCount} within 5km — plan hydration.`);
 
-const distKm = (metrics["Total Route Length (m)"] || 0) / 1000;
-let lengthScore = 0.1;
-if (distKm >= 12 && distKm <= 16) lengthScore = 1;
-else if (distKm < 12) lengthScore = 0.1 + 0.9 * (distKm / 12);
-else lengthScore = Math.max(0.1, 1 - (distKm - 16) / (30 - 16));
+  // === Other HSI factors ===
+  const maxElevation = metrics["Max Elevation"] || 0;
+  const altitudeScore = 1 - Math.min(maxElevation / 2500, 1);
 
-const timeH = distKm / 5;
-let timeScore = 1;
-if (timeH < 3) timeScore = 0.1;
-else if (timeH < 4) timeScore = 0.1 + 0.9 * ((timeH - 3) / 1);
-else if (timeH > 7) timeScore = 0.1;
-else if (timeH > 6) timeScore = 0.1 + 0.9 * ((7 - timeH) / 1);
-else timeScore = 1;
+  const distKm = parseFloat(metrics["Total Route Length (m)"] || 0) / 1000;
+  let lengthScore = 0.1;
+  if (distKm >= 12 && distKm <= 16) lengthScore = 1;
+  else if (distKm < 12) lengthScore = 0.1 + 0.9 * (distKm / 12);
+  else lengthScore = Math.max(0.1, 1 - (distKm - 16) / (30 - 16));
+  if (lengthScore < 1) recommendations.push(`📏 Route length: ${distKm.toFixed(1)} km — match to your endurance.`);
 
-const waterCount = Object.values(metrics["POI counts for type Water"]?.["5km"] || {}).reduce((a, b) => a + b, 0);
-const waterScore = waterCount > 0 ? 1 : 0.1;
+  const timeH = distKm / 5;
+  let timeScore = 1;
+  if (timeH < 3) timeScore = 0.1;
+  else if (timeH < 4) timeScore = 0.1 + 0.9 * ((timeH - 3) / 1);
+  else if (timeH > 7) timeScore = 0.1;
+  else if (timeH > 6) timeScore = 0.1 + 0.9 * ((7 - timeH) / 1);
+  if (timeScore < 1) recommendations.push(`⏱️ Estimated time: ${timeH.toFixed(1)} h — plan your pace.`);
 
-const HSI =
-  slopeScore * weights.slope +
-  altitudeScore * weights.altitude +
-  lengthScore * weights.length +
-  timeScore * weights.time +
-  waterScore * weights.water;
+  const HSI =
+    slopeScore * weights.slope +
+    altitudeScore * weights.altitude +
+    lengthScore * weights.length +
+    timeScore * weights.time +
+    waterScore * weights.water;
 
- // === Weather Risk ===
+  // === Weather Risk ===
   const weatherFactors = [];
 
-  // Wind Speed
-  const wind      = metrics["forecast_wind_max"] || 0;
+  const wind      = metrics["Max Wind Speed"] || 0;
   const windScore = wind > 15 ? 100 : wind > 10 ? 70 : wind > 5 ? 40 : 10;
   weatherFactors.push(windScore);
-  if (windScore >= 70) recommendations.push(`⚡️ Strong wind: ${wind} m/s`);
+  if (windScore >= 40) recommendations.push(`💨 Wind: ${wind} m/s — consider wind exposure.`);
 
-  // Rain Intensity
-  const rain      = metrics["forecast_rain_max"] || 0;
+  const rain      = metrics["Max Rain (3h)"] || 0;
   const rainScore = rain > 20 ? 100 : rain > 10 ? 70 : rain > 5 ? 40 : 10;
   weatherFactors.push(rainScore);
-  if (rainScore >= 70) recommendations.push(`🌧️ Heavy rain: ${rain} mm/3h`);
+  if (rainScore >= 40) recommendations.push(`🌧️ Rain: ${rain} mm/3h — bring rain gear.`);
 
-  // Snowfall
-  const snow      = metrics["forecast_snow_max"] || 0;
+  const snow      = metrics["Max Snow (3h)"] || 0;
   const snowScore = snow > 5 ? 100 : snow > 2 ? 60 : 10;
   weatherFactors.push(snowScore);
-  if (snowScore >= 60) recommendations.push(`❄️ Heavy snowfall: ${snow} mm/3h`);
+  if (snowScore >= 40) recommendations.push(`❄️ Snow: ${snow} mm/3h — slippery trails possible.`);
 
-  // Temperature Extremes
-  const minT      = metrics["forecast_temp_extremes"]?.min || 0;
-  const maxT      = metrics["forecast_temp_extremes"]?.max || 0;
+  const minT      = metrics["Min Temperature"] || 0;
+  const maxT      = metrics["Max Temperature"] || 0;
   const tempScore = (minT < -10 || maxT > 35) ? 100
                    : (minT < 0  || maxT > 30) ? 70
                    : 10;
   weatherFactors.push(tempScore);
-  if (tempScore >= 70) recommendations.push(`🌡️ Temperature extremes: ${minT}…${maxT} °C`);
+  if (tempScore >= 40) recommendations.push(`🌡️ Temperature: ${minT}…${maxT}°C — dress in layers.`);
 
-  // Humidity
-  const hum        = metrics["forecast_humidity_max"] || 0;
-  const humScore   = hum > 90 ? 100 : hum > 80 ? 70 : 10;
+  const hum      = metrics["Max Humidity"] || 0;
+  const humScore = hum > 90 ? 100 : hum > 80 ? 70 : 10;
   weatherFactors.push(humScore);
-  if (humScore >= 70) recommendations.push(`💧 High humidity: ${hum}%`);
+  if (humScore >= 40) recommendations.push(`💧 Humidity: ${hum}% — may affect comfort.`);
 
-  // UV Index
-  const uv        = metrics["uv_index"] || 0;
-  const uvScore   = uv > 8 ? 100 : uv > 6 ? 70 : uv > 3 ? 40 : 10;
+  const uv      = metrics["UV Index"] || 0;
+  const uvScore = uv > 8 ? 100 : uv > 6 ? 70 : uv > 3 ? 40 : 10;
   weatherFactors.push(uvScore);
-  if (uvScore >= 70) recommendations.push(`☀️ High UV index: ${uv}`);
+  if (uvScore >= 40) recommendations.push(`☀️ UV Index: ${uv} — apply sun protection.`);
 
-  // Air Quality Index (AQI)
-  const minAqi   = metrics["min_aqi"] || 0;
-  const maxAqi   = metrics["max_aqi"] || 0;
+  const minAqi   = metrics["Min AQI"]?.aqi || 0;
+  const maxAqi   = metrics["Max AQI"]?.aqi || 0;
   const avgAqi   = (minAqi + maxAqi) / 2;
-  const aqiScore = avgAqi > 150 ? 100
-                 : avgAqi > 100 ? 70
-                 : avgAqi > 50  ? 40
-                 : 10;
+  const aqiScore = avgAqi > 150 ? 100 : avgAqi > 100 ? 70 : avgAqi > 50 ? 40 : 10;
   weatherFactors.push(aqiScore);
-  if (aqiScore >= 70) recommendations.push(`😷 Poor air quality: AQI≈${avgAqi.toFixed(0)}`);
+  if (aqiScore >= 40) recommendations.push(`😷 Air Quality (AQI): ~${avgAqi.toFixed(0)} — mind breathing conditions.`);
 
   const weatherRisk = weatherFactors.reduce((sum, v) => sum + v, 0) / weatherFactors.length;
 
   // === Terrain Risk ===
   const terrainFactors = [];
 
-  // Elevation Gain
-  const gain         = metrics["total_elevation_gain"] || 0;
-  const gainScore    = gain > 1200 ? 100 : gain > 800 ? 70 : gain > 400 ? 40 : 10;
-  terrainFactors.push(gainScore);
-  if (gainScore >= 70) recommendations.push(`⛰️ Significant elevation gain: ${gain} m`);
+  // 1) Slope Risk: invert HSI slopeScore → 0–100
+  const slopeRisk = Math.min(slope, 12) >= 12
+    ? 100
+    : ((12 - slope) / 12) < 0
+      ? 0
+      : (1 - slopeScore) * 100;  // slopeScore = 1 - slope/12
+  terrainFactors.push(slopeRisk);
+  if (slopeRisk >= 40) recommendations.push(`🪨 Steep slopes: ${slope.toFixed(1)}° — technical footing needed.`);
 
-  // Slope Steepness
-  const slopeRiskScore = slope > 35  ? 100
-                        : slope > 25 ? 70
-                        : slope > 15 ? 40
-                        : 10;
-  terrainFactors.push(slopeRiskScore);
-  if (slopeRiskScore >= 70) recommendations.push(`🪨 Steep slopes: ${slope.toFixed(1)}°`);
+  // 2) Altitude Risk: invert HSI altitudeScore → 0–100
+  const altRisk = Math.min(maxElevation / 2500, 1) * 100; 
+  terrainFactors.push(altRisk);
+  if (altRisk >= 40) recommendations.push(`⛰️ High max elevation: ${maxElevation} m — altitude risk.`);
 
-  // Distance Length
-  const distRiskScore  = distKm > 20  ? 100
-                        : distKm > 15 ? 70
-                        : distKm > 10 ? 40
-                        : 10;
-  terrainFactors.push(distRiskScore);
-  if (distRiskScore >= 70) recommendations.push(`📏 Long distance: ${distKm.toFixed(1)} km`);
+  // 3) Elevation Gain Risk: as before
+  const gain = metrics["Total Elevation Gain"] || 0;
+  const gainRisk = gain > 1200 ? 100 : gain > 800 ? 70 : gain > 400 ? 40 : 10;
+  terrainFactors.push(gainRisk);
+  if (gainRisk >= 40) recommendations.push(`📈 Elevation gain: ${gain} m — expect sustained climbs.`);
 
   const terrainRisk = terrainFactors.reduce((sum, v) => sum + v, 0) / terrainFactors.length;
 
   // === POI & Coverage Risk ===
   const poiFactors = [];
 
-  // Water sources within 5 km
-  const w5        = metrics["water_feature_counts"]?.["5km"] || 0;
-  const w5Score   = w5 < 2   ? 100
-                   : w5 < 5   ? 70
-                   : 10;
-  poiFactors.push(w5Score);
-  if (w5Score >= 70) recommendations.push(`🚰 Limited water sources: ${w5}`);
+  // Water
+  const wScore = waterCount < 2 ? 100 : waterCount < 4 ? 70 : 10;
+  poiFactors.push(wScore);
+  if (wScore >= 40) recommendations.push(`🚰 Water POIs: ${waterCount} within 5km — plan hydration.`);
 
-  // Emergency POIs within 10 km
-  const e10        = metrics["emergency_poi_counts"]?.["10km"] || 0;
-  const e10Score   = e10 < 1   ? 100
-                   : e10 < 3   ? 70
-                   : 10;
-  poiFactors.push(e10Score);
-  if (e10Score >= 70) recommendations.push(`🆘 Few emergency points: ${e10}`);
+  // Emergency POIs
+  const e2 = Object.values(metrics["POI counts for type Emergency POI"]?.["5km"] || {}).reduce((a, b) => a + b, 0);
+  const e5 = Object.values(metrics["POI counts for type Emergency POI"]?.["10km"] || {}).reduce((a, b) => a + b, 0);
+  const totalEmergency = e2 + e5;
+  const eScore = totalEmergency < 1 ? 100 : totalEmergency < 3 ? 70 : 10;
+  poiFactors.push(eScore);
+  if (eScore >= 40) recommendations.push(`🆘 Emergency POIs: ${totalEmergency} within 10km — evaluate rescue options.`);
 
-  // Hazards within 5 km
-  const h5        = metrics["hazard_counts"]?.["5km"] || 0;
-  const h5Score   = h5 > 3    ? 100
-                   : h5 > 1    ? 60
-                   : 10;
-  poiFactors.push(h5Score);
-  if (h5Score >= 60) recommendations.push(`⚠️ Numerous hazards: ${h5}`);
+  // Hazards
+  const h0 = Object.values(metrics["POI counts for type Hazard"]?.["2km"] || {}).reduce((a, b) => a + b, 0);
+  const h2 = Object.values(metrics["POI counts for type Hazard"]?.["5km"] || {}).reduce((a, b) => a + b, 0);
+  const totalHazards = h0 + h2;
+  const hScore = totalHazards > 3 ? 100 : totalHazards > 1 ? 60 : 10;
+  poiFactors.push(hScore);
+  if (hScore >= 40) recommendations.push(`⚠️ Hazards: ${totalHazards} within 5km — proceed with caution.`);
 
-  // Cellular coverage percentage
-  const cov       = metrics["tower_coverage_percent"] || 0;
-  const covScore  = cov < 30  ? 100
-                  : cov < 60  ? 70
-                  : cov < 90  ? 40
-                  : 10;
+  // Coverage
+  const cov = metrics["% of route covered (≤3 km)"] || 0;
+  const covScore = cov < 30 ? 100 : cov < 60 ? 70 : cov < 90 ? 40 : 10;
   poiFactors.push(covScore);
-  if (covScore <= 40) recommendations.push(`📶 Low cellular coverage: ${cov}%`);
+  if (covScore >= 40) recommendations.push(`📶 Coverage: ${cov}% — may affect connectivity.`);
 
-  // Info POIs within 5 km
-  const info5     = metrics["info_poi_counts"]?.["5km"] || 0;
-  const infoScore = info5 < 1  ? 100
-                  : info5 < 3  ? 60
-                  : 10;
-  poiFactors.push(infoScore);
-  if (infoScore >= 60) recommendations.push(`ℹ️ Few info points: ${info5}`);
+  // Info POIs
+  const i0 = Object.values(metrics["POI counts for type Information"]?.["2km"] || {}).reduce((a, b) => a + b, 0);
+  const i2 = Object.values(metrics["POI counts for type Information"]?.["5km"] || {}).reduce((a, b) => a + b, 0);
+  const totalInfo = i0 + i2;
+  const infoScore = totalInfo < 1 ? 100 : totalInfo < 3 ? 60 : 10;
+  poiFactors.push(infoScore * 0.5);
+  if (infoScore * 0.5 >= 40) recommendations.push(`ℹ️ Info POIs: ${totalInfo} within 5km — useful for navigation.`);
 
   const poiRisk = poiFactors.reduce((sum, v) => sum + v, 0) / poiFactors.length;
-
-  // === Composite Risk === (uses HSI)
   const compositeRisk = HSI * 100;
 
   const classifyLevel = (score) => {
@@ -192,4 +181,4 @@ const HSI =
       { name: 'Composite',     value: +compositeRisk.toFixed(1), level: classifyLevel(compositeRisk) },
     ]
   };
-}
+};
