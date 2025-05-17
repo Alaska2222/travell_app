@@ -6,7 +6,7 @@ from itertools import combinations
 import json
 from statistics import mode
 from collections import Counter
-
+import {MAPY_API_KEY} from '../config.js';
 
 SETT_FILE     = "C:/Users/CUMPUKTER/Desktop/Settlements.csv"
 CLUSTERS_FILE = "C:/Users/CUMPUKTER/Desktop/route_clusters_all.csv"
@@ -14,7 +14,6 @@ PEAKS_FILE    = "C:/Users/CUMPUKTER/Desktop/Peaks.csv"
 MODEL_FILE    = "C:/Users/CUMPUKTER/Desktop/xgb_smote_tomek_pipeline.pkl"
 LE_FILE       = "C:/Users/CUMPUKTER/Desktop/label_encoder.pkl"
 DATASET_JSON  = "C:/Users/CUMPUKTER/Desktop/DATASET.json"
-MAPYCZ_KEY    = "gFeJKlnchNFmUiLYjhegVqd2x7dJ2wq34nmUCYhtWRc"
 BASE_URL      = "https://api.mapy.cz/v1/routing/route"
 TOL_DIST = 3.0  
 
@@ -104,7 +103,7 @@ def find_best_peak_combo(start, end, k, multiplier=3):
     return pd.DataFrame([{'name':p.name,'lat':p.lat,'lon':p.lon,'elevation':p.elevation,'detour':p.detour} for p in best])
 
 def validate_with_mapycz(seq):
-    params={'apikey':MAPYCZ_KEY,'routeType':'foot_fast'}
+    params={'apikey':MAPY_API_KEY,'routeType':'foot_fast'}
     slat, slon=seq[0]; elat, elon=seq[-1]
     params['start']=f"{slon},{slat}"; params['end']=f"{elon},{elat}"
     wps=seq[1:-1]
