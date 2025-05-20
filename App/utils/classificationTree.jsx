@@ -2,12 +2,13 @@ export const classifyRisk = (metrics) => {
   const recommendations = [];
 
   // === Hiking Safety Index (HSI) ===
-  const weights = {
-    slope: 0.407,
-    altitude: 0.262,
-    length: 0.174,
-    time: 0.109,
-    water: 0.048
+ const weights = {
+    slope: 0.3970,
+    altitude: 0.2555,
+    length: 0.1697,
+    time: 0.1063,
+    water: 0.0468,
+    aspect: 0.0245
   };
 
   // === Slope Score ===
@@ -26,6 +27,15 @@ export const classifyRisk = (metrics) => {
   // === Other HSI factors ===
   const maxElevation = metrics["Max Elevation"] || 0;
   const altitudeScore = 1 - Math.min(maxElevation / 2500, 1);
+  
+  const start = metrics["Start Coordinates"] || {};
+  const end = metrics["End Coordinates"] || {};
+  let aspect = 0;
+  if (start.lat !== undefined && end.lat !== undefined && start.lon !== undefined && end.lon !== undefined) {
+    const dLat = end.lat - start.lat;
+    const dLon = end.lon - start.lon;
+    aspect = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+  }
 
   const distKm = parseFloat(metrics["Total Route Length (m)"] || 0) / 1000;
   let lengthScore = 0.1;
@@ -47,7 +57,8 @@ export const classifyRisk = (metrics) => {
     altitudeScore * weights.altitude +
     lengthScore * weights.length +
     timeScore * weights.time +
-    waterScore * weights.water;
+    waterScore * weights.water +
+    aspectScore * weights.aspect;
 
   // === Weather Risk ===
   const weatherFactors = [];
